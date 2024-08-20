@@ -3,11 +3,10 @@ name: NeuroCoder CI/CD Pipeline
 on:
   push:
     branches:
-      - neurocoder-development
+      - main
   pull_request:
     branches:
-      - neurocoder-development
-
+      - main
 jobs:
   build:
     runs-on: ubuntu-latest
