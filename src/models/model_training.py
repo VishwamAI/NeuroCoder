@@ -1,3 +1,6 @@
+import os
+import shutil
+import logging
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -10,8 +13,6 @@ from stable_baselines3.common.vec_env import DummyVecEnv
 from src.models.advanced_architecture import AdvancedNeuroCoder
 from bayes_opt import BayesianOptimization
 from torch.nn.utils.rnn import pad_sequence
-
-from src.models.advanced_architecture import AdvancedNeuroCoder
 
 # AdvancedNeuroCoder is now imported and will be used instead of the previous NeuroCoder class
 
@@ -195,27 +196,54 @@ def hyperparameter_optimization(model: AdvancedNeuroCoder, train_data: List, val
 
 def continuous_learning(model: AdvancedNeuroCoder, new_data: List[Dict[str, torch.Tensor]]):
     optimizer = AdamW(model.parameters(), lr=1e-5)
-    criterion = nn.CrossEntropyLoss()
+    token_criterion = nn.CrossEntropyLoss(ignore_index=-100)
+    task_criterion = nn.CrossEntropyLoss()
 
+    model.train()
     for batch in new_data:
         optimizer.zero_grad()
-        input_ids = batch['input_ids']
-        attention_mask = batch['attention_mask']
-        labels = batch['labels']
-        task = batch['task']
 
-        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-        loss = criterion(outputs.view(-1, outputs.size(-1)), labels.view(-1))
+        # Ensure all tensors are on the correct device and have the correct shape
+        input_ids = batch['input_ids'].to(model.device)
+        attention_mask = batch['attention_mask'].to(model.device)
+        labels = batch['labels'].to(model.device)
+        task_labels = batch['task_labels'].to(model.device)
+
+        # Ensure input tensors have the correct shape (batch_size, sequence_length)
+        if input_ids.dim() == 1:
+            input_ids = input_ids.unsqueeze(0)
+            attention_mask = attention_mask.unsqueeze(0)
+            labels = labels.unsqueeze(0)
+            task_labels = task_labels.unsqueeze(0)
+
+        token_outputs, task_outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+
+        # Ensure token_outputs and labels have the same shape
+        if token_outputs.shape[1] != labels.shape[1]:
+            min_len = min(token_outputs.shape[1], labels.shape[1])
+            token_outputs = token_outputs[:, :min_len, :]
+            labels = labels[:, :min_len]
+
+        # Mask out padding tokens
+        mask = (labels != -100).float()
+        token_loss = token_criterion(token_outputs.contiguous().view(-1, token_outputs.size(-1)), labels.contiguous().view(-1))
+        token_loss = (token_loss * mask.view(-1)).sum() / mask.sum()
+
+        task_loss = task_criterion(task_outputs, task_labels.squeeze())
+        loss = token_loss + task_loss
 
         # Add regularization to preserve existing knowledge
-        for param, old_param in zip(model.parameters(), model.old_params):
-            loss += 0.001 * torch.sum((param - old_param) ** 2)
+        if hasattr(model, 'old_params'):
+            for param, old_param in zip(model.parameters(), model.old_params):
+                loss += 0.001 * torch.sum((param - old_param) ** 2)
 
         loss.backward()
         optimizer.step()
 
     # Update old parameters
     model.old_params = [param.clone().detach() for param in model.parameters()]
+
+    print(f"Continuous learning completed. Final loss: {loss.item():.4f}")
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -244,11 +272,27 @@ if __name__ == "__main__":
     config.update(optimized_config)
 
     # Train the model
-    train_model(model, train_loader, val_loader, config)
+    trained_model = train_model(model, train_loader, val_loader, config)
 
     # Continuous learning
-    new_data = load_datasets()  # Load new data periodically
-    continuous_learning(model, new_data)
+    new_train_data, new_val_data = load_datasets()  # Load new data periodically
+    new_train_loader = DataLoader(new_train_data, batch_size=32, shuffle=True)
+    continuous_learning(trained_model, new_train_loader)
 
     # Save the trained model
-    torch.save(model.state_dict(), 'neurocoder_model.pth')
+    try:
+        save_dir = os.path.join(os.getcwd(), 'models')
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, 'neurocoder_model.pth')
+        torch.save(trained_model.state_dict(), save_path)
+        print(f"Model saved successfully at {save_path}")
+    except Exception as e:
+        print(f"Error saving model: {str(e)}")
+        print(f"Current working directory: {os.getcwd()}")
+        print(f"Attempted save path: {save_path}")
+        print(f"Is directory writable? {os.access(save_dir, os.W_OK)}")
+        print(f"Free disk space: {shutil.disk_usage(save_dir).free / (1024 * 1024 * 1024):.2f} GB")
+
+    # Log model architecture and hyperparameters
+    logging.info(f"Model Architecture:\n{trained_model}")
+    logging.info(f"Final Hyperparameters: {config}")

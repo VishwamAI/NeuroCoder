@@ -111,7 +111,7 @@ class MultiHeadAttention(nn.Module):
         return output
 
 class AdvancedNeuroCoder(nn.Module):
-    def __init__(self, vocab_size: int, d_model: int = 768, n_layers: int = 12, n_heads: int = 12, num_tasks: int = 3):
+    def __init__(self, vocab_size: int, d_model: int = 768, n_layers: int = 12, n_heads: int = 12, num_tasks: int = 4):
         super(AdvancedNeuroCoder, self).__init__()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.embedding = nn.Embedding(vocab_size, d_model)
@@ -131,9 +131,9 @@ class AdvancedNeuroCoder(nn.Module):
         self.criterion = nn.CrossEntropyLoss()
         self.to(self.device)
 
-    def forward(self, x: torch.Tensor, attention_mask: torch.Tensor = None, adj_matrix: torch.Tensor = None) -> Tuple[torch.Tensor, torch.Tensor]:
-        x = x.to(self.device)
-        x = self.embedding(x)
+    def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor = None, adj_matrix: torch.Tensor = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        input_ids = input_ids.to(self.device)
+        x = self.embedding(input_ids)
 
         # Ensure x has the correct shape for inception layer
         batch_size, seq_len, d_model = x.shape
@@ -151,6 +151,7 @@ class AdvancedNeuroCoder(nn.Module):
 
         # Apply attention mask if provided
         if attention_mask is not None:
+            attention_mask = attention_mask.to(self.device)
             attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
             attention_mask = (1.0 - attention_mask) * -10000.0
 

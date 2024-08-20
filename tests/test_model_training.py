@@ -16,7 +16,7 @@ def test_forward_pass(model):
     token_output, task_output = model(input_ids, attention_mask)
     assert token_output is not None and task_output is not None
     assert token_output.shape == (1, 4, 10000)  # (batch_size, sequence_length, vocab_size)
-    assert task_output.shape == (1, 3)  # (batch_size, num_tasks)
+    assert task_output.shape == (1, 4)  # (batch_size, num_tasks)
 
 def test_model_output_range(model):
     input_ids = torch.tensor([[1, 2, 3, 4]])
