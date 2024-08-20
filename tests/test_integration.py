@@ -14,13 +14,23 @@ def model():
 
 def test_api_generate_code(client, model):
     input_data = {
-        "input_ids": [1, 2, 3, 4],
-        "attention_mask": [1, 1, 1, 1],
+        "input_ids": [[1, 2, 3, 4]],  # Add batch dimension
+        "attention_mask": [[1, 1, 1, 1]],  # Add batch dimension
         "task": "generate"
     }
     response = client.post("/generate-code", json=input_data)
     assert response.status_code == 200
-    assert "output" in response.json()
+    assert "token_output" in response.json()
+    assert "task_output" in response.json()
+
+    token_output = response.json()["token_output"]
+    task_output = response.json()["task_output"]
+
+    assert isinstance(token_output, list)
+    assert isinstance(task_output, list)
+    assert len(token_output) == 1  # Batch size
+    assert len(token_output[0]) == 4  # Sequence length
+    assert len(task_output) == 1  # Batch size
 
 def test_api_feedback(client):
     feedback_data = {
