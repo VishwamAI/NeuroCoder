@@ -1,0 +1,20 @@
+# NeuroCoder Project Dependencies
+
+# FastAPI for creating APIs
+fastapi==0.78.0
+
+# PyTorch for model development
+torch==1.12.1
+
+# Transformers for advanced architecture
+transformers==4.21.1
+
+# pytest for testing
+pytest==7.1.2
+
+# Docker for containerization
+docker==5.0.3
+
+# Additional dependencies
+requests==2.28.1
+pydantic==1.9.1
